@@ -2,6 +2,7 @@
 
 import re
 import shutil
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
@@ -16,6 +17,8 @@ from app.schemas.notification_config import (
 )
 from app.schemas.survey_config import SurveyConfig
 from app.schemas.survey_response import SurveyResponseRecord
+
+logger = logging.getLogger("simple_surveys.storage.file")
 
 
 def format_filename_timestamp(dt: Optional[datetime] = None) -> str:
@@ -34,7 +37,7 @@ class FileStorageRepository(BaseStorageRepository):
     """Persists surveys, responses, images, and config to designated server directories."""
 
     def __init__(self, data_dir: Optional[Path] = None):
-        self.data_dir = data_dir or settings.data_dir
+        self.data_dir = data_dir
         self.surveys_dir = settings.surveys_dir
         self.schedule_config_dir = settings.schedule_config_dir
         self.responses_dir = settings.responses_dir

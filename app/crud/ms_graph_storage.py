@@ -5,6 +5,7 @@ and captured images directly to Microsoft OneDrive / SharePoint via Microsoft Gr
 Conforms strictly to BaseStorageRepository for drop-in polymorphic swapping.
 """
 
+import logging
 from pathlib import Path
 from typing import List, Optional
 from app.crud.base import BaseStorageRepository
@@ -12,6 +13,7 @@ from app.schemas.notification_config import DeviceRegistration, SamplingRules
 from app.schemas.survey_config import SurveyConfig
 from app.schemas.survey_response import SurveyResponseRecord
 
+logger = logging.getLogger("simple_surveys.storage.ms_graph")
 
 class MSGraphStorageRepository(BaseStorageRepository):
     """

@@ -1,7 +1,7 @@
 """Application configuration settings."""
 
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,8 +21,15 @@ class Settings(BaseSettings):
     allowed_origins: List[str] = ["*"]
 
     # Storage settings
-    storage_backend: str = "file_storage"  # file_storage or ms_graph
+    storage_backend: str = "file_storage"  # "file_storage", "firebase", or "ms_graph"
     data_dir: Path = Path("data")
+
+    # Firebase / Google Cloud settings
+    firebase_credentials_path: Optional[str] = None
+    firebase_credentials_json: Optional[str] = None
+    firebase_project_id: Optional[str] = None
+    firebase_storage_bucket: Optional[str] = None
+    firestore_database: Optional[str] = None
 
     # Survey response expiration
     time_to_complete_minutes: int = 5
@@ -54,6 +61,11 @@ class Settings(BaseSettings):
     def sampling_rules_path(self) -> Path:
         """Path to sampling rules JSON file."""
         return self.schedule_config_dir / "sampling_rules.json"
+
+    @property
+    def image_cache_dir(self) -> Path:
+        """Directory holding cached images downloaded from cloud storage."""
+        return self.data_dir / "cache" / "images"
 
 
 settings = Settings()
