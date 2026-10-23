@@ -62,10 +62,5 @@ class Settings(BaseSettings):
         """Path to sampling rules JSON file."""
         return self.schedule_config_dir / "sampling_rules.json"
 
-    @property
-    def image_cache_dir(self) -> Path:
-        """Directory holding cached images downloaded from cloud storage."""
-        return self.data_dir / "cache" / "images"
-
 
 settings = Settings()

@@ -1,7 +1,8 @@
 """Firebase and Google Cloud Firestore Storage Repository.
 
 Persists surveys, responses, sampling rules, and device tokens in Cloud Firestore (NoSQL).
-Persists uploaded response photos in Firebase Cloud Storage (GCS) with local caching.
+Persists uploaded response photos directly in Google Cloud Storage.
+This repository is 100% cloud-native and performs zero local filesystem operations.
 Conforms strictly to BaseStorageRepository for drop-in polymorphic swapping.
 """
 
@@ -9,10 +10,8 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-import aiofiles
-import aiofiles.os
 import firebase_admin
 from firebase_admin import credentials, storage
 from google.cloud.firestore_v1.async_client import AsyncClient
@@ -32,7 +31,8 @@ logger = logging.getLogger("simple_surveys.storage.firebase")
 class FirebaseStorageRepository(BaseStorageRepository):
     """
     Storage repository utilizing Google Cloud Firestore for JSON documents
-    and Firebase Cloud Storage for media assets.
+    and Cloud Storage for media assets. Operates purely in the cloud with zero
+    local filesystem dependencies.
     """
 
     def __init__(
@@ -42,16 +42,12 @@ class FirebaseStorageRepository(BaseStorageRepository):
         project_id: Optional[str] = None,
         storage_bucket: Optional[str] = None,
         database: Optional[str] = None,
-        image_cache_dir: Optional[Path] = None,
     ):
-        self.credentials_path = credentials_path
-        self.credentials_json = credentials_json
-        self.project_id = project_id
-        self.storage_bucket_name = storage_bucket
-        self.database = database or "(default)"
-        self.image_cache_dir = image_cache_dir or Path("data/cache/images")
-
-        self.image_cache_dir.mkdir(parents=True, exist_ok=True)
+        self.credentials_path = credentials_path or settings.firebase_credentials_path
+        self.credentials_json = credentials_json or settings.firebase_credentials_json
+        self.project_id = project_id or settings.firebase_project_id
+        self.storage_bucket_name = storage_bucket or settings.firebase_storage_bucket
+        self.database = database or settings.firestore_database
 
         self._firebase_app: Optional[firebase_admin.App] = None
         self._async_db: Optional[AsyncClient] = None
@@ -135,7 +131,7 @@ class FirebaseStorageRepository(BaseStorageRepository):
                     app=self._firebase_app,
                 )
             except Exception as e:
-                logger.warning("Could not bind Firebase storage bucket '%s': %s", self.storage_bucket_name, e)
+                logger.warning("Could not bind Cloud Storage bucket '%s': %s", self.storage_bucket_name, e)
 
     @property
     def db(self) -> AsyncClient:
@@ -146,7 +142,7 @@ class FirebaseStorageRepository(BaseStorageRepository):
             )
         return self._async_db
 
-    # ---------------- Survey Operations ----------------
+    # ---------------- Survey Operations (Firestore) ----------------
 
     async def save_survey(self, survey: SurveyConfig) -> SurveyConfig:
         """Persist a survey definition in Firestore."""
@@ -179,14 +175,13 @@ class FirebaseStorageRepository(BaseStorageRepository):
                 logger.warning("Error parsing survey doc '%s': %s", doc.id, e)
                 continue
 
-        # Sort surveys by survey_id for deterministic ordering
         surveys.sort(key=lambda s: s.survey_id)
         return surveys
 
     async def delete_survey(self, survey_id: str, delete_responses: bool = False) -> bool:
         """
         Delete a survey definition by ID from Firestore.
-        Optionally deletes associated responses and media.
+        Optionally deletes associated responses and Cloud Storage images.
         """
         doc_id = sanitize_filename(survey_id)
         doc_ref = self.db.collection("surveys").document(doc_id)
@@ -203,12 +198,12 @@ class FirebaseStorageRepository(BaseStorageRepository):
                 img_data = data.get("image") or {}
                 filename = img_data.get("image_filename")
                 if filename:
-                    await self._delete_image_file(survey_id, filename)
+                    await self._delete_image_blob(survey_id, filename)
                 await r_doc.reference.delete()
 
         return True
 
-    # ---------------- Response Operations ----------------
+    # ---------------- Response Operations (Firestore) ----------------
 
     async def save_response(
         self,
@@ -238,7 +233,7 @@ class FirebaseStorageRepository(BaseStorageRepository):
         return SurveyResponseRecord.model_validate(data)
 
     async def list_responses(self, survey_id: Optional[str] = None) -> List[SurveyResponseRecord]:
-        """List response records, optionally filtered by survey_id."""
+        """List response records, optionally filtered by survey_id from Firestore."""
         results: List[SurveyResponseRecord] = []
         query = self.db.collection("responses")
         if survey_id:
@@ -262,7 +257,7 @@ class FirebaseStorageRepository(BaseStorageRepository):
         delete_image: bool = True,
     ) -> bool:
         """
-        Delete a response record from Firestore and optionally its associated image.
+        Delete a response record from Firestore and optionally its photo from Cloud Storage.
         """
         doc_id = sanitize_filename(response_id)
         doc_ref = self.db.collection("responses").document(doc_id)
@@ -278,12 +273,12 @@ class FirebaseStorageRepository(BaseStorageRepository):
             img_data = data.get("image") or {}
             filename = img_data.get("image_filename")
             if filename:
-                await self._delete_image_file(survey_id, filename)
+                await self._delete_image_blob(survey_id, filename)
 
         await doc_ref.delete()
         return True
 
-    # ---------------- Media / Images ----------------
+    # ---------------- Media / Images (Cloud Storage Only) ----------------
 
     async def save_image(
         self,
@@ -294,8 +289,11 @@ class FirebaseStorageRepository(BaseStorageRepository):
         extension: str = "jpg",
     ) -> str:
         """
-        Save an image file into Firebase Cloud Storage and cache locally.
+        Upload an image directly into Cloud Storage (zero local disk writes).
         """
+        if self._storage_bucket is None:
+            raise RuntimeError("Cloud Storage bucket is not configured.")
+
         clean_ext = extension.lstrip(".").lower() or "jpg"
         if response_id.startswith("resp_"):
             img_id = "img_" + response_id[5:]
@@ -305,88 +303,54 @@ class FirebaseStorageRepository(BaseStorageRepository):
         clean_img_id = sanitize_filename(img_id)
         filename = f"{timestamp_str}_{clean_img_id}.{clean_ext}"
 
-        # 1. Write to local cache first
-        local_cache_path = self.image_cache_dir / sanitize_filename(survey_id) / filename
-        local_cache_path.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(local_cache_path, "wb") as f:
-            await f.write(image_bytes)
+        content_type = "image/png" if clean_ext == "png" else "image/jpeg"
+        blob_path = f"responses/{survey_id}/images/{filename}"
 
-        # 2. Upload to Firebase Storage bucket if configured
-        if self._storage_bucket is not None:
-            content_type = "image/png" if clean_ext == "png" else "image/jpeg"
-            blob_path = f"responses/{survey_id}/images/{filename}"
+        def _upload() -> None:
+            blob = self._storage_bucket.blob(blob_path)
+            blob.upload_from_string(image_bytes, content_type=content_type)
 
-            def _upload() -> None:
-                blob = self._storage_bucket.blob(blob_path)
-                blob.upload_from_string(image_bytes, content_type=content_type)
-
-            try:
-                await asyncio.to_thread(_upload)
-            except Exception as e:
-                logger.error("Failed to upload image blob '%s' to Firebase Storage: %s", blob_path, e)
-
+        await asyncio.to_thread(_upload)
         return filename
 
-    async def get_image_path(self, survey_id: str, filename: str) -> Optional[Path]:
+    async def get_image(self, survey_id: str, filename: str) -> Optional[Tuple[bytes, str]]:
         """
-        Get absolute path to an image file.
-        Checks local cache first; if absent, downloads from Firebase Storage.
+        Fetch image bytes and content-type directly from Cloud Storage into memory.
+        Zero files are ever created locally.
         """
-        clean_survey = sanitize_filename(survey_id)
-        clean_filename = sanitize_filename(filename)
-        local_cache_path = self.image_cache_dir / clean_survey / clean_filename
+        if self._storage_bucket is None:
+            return None
 
-        if local_cache_path.exists():
-            return local_cache_path
+        blob_path = f"responses/{survey_id}/images/{filename}"
 
-        # Attempt downloading from Firebase Cloud Storage
-        if self._storage_bucket is not None:
-            blob_path = f"responses/{survey_id}/images/{filename}"
+        def _download() -> Optional[Tuple[bytes, str]]:
+            blob = self._storage_bucket.blob(blob_path)
+            if not blob.exists():
+                return None
+            data = blob.download_as_bytes()
+            content_type = blob.content_type or ("image/png" if filename.lower().endswith(".png") else "image/jpeg")
+            return data, content_type
 
-            def _download() -> bool:
-                blob = self._storage_bucket.blob(blob_path)
-                if not blob.exists():
-                    return False
-                local_cache_path.parent.mkdir(parents=True, exist_ok=True)
-                blob.download_to_filename(str(local_cache_path))
-                return True
+        return await asyncio.to_thread(_download)
 
-            try:
-                exists = await asyncio.to_thread(_download)
-                if exists and local_cache_path.exists():
-                    return local_cache_path
-            except Exception as e:
-                logger.error("Error retrieving blob '%s' from Firebase Storage: %s", blob_path, e)
+    async def _delete_image_blob(self, survey_id: str, filename: str) -> None:
+        """Remove image blob directly from Cloud Storage."""
+        if self._storage_bucket is None:
+            return
 
-        return None
+        blob_path = f"responses/{survey_id}/images/{filename}"
 
-    async def _delete_image_file(self, survey_id: str, filename: str) -> None:
-        """Helper to remove image from local cache and Firebase Storage."""
-        # 1. Delete from local cache
-        clean_survey = sanitize_filename(survey_id)
-        clean_filename = sanitize_filename(filename)
-        local_cache_path = self.image_cache_dir / clean_survey / clean_filename
-        if local_cache_path.exists():
-            try:
-                await aiofiles.os.remove(local_cache_path)
-            except Exception as e:
-                logger.warning("Could not delete cached image '%s': %s", local_cache_path, e)
+        def _delete() -> None:
+            blob = self._storage_bucket.blob(blob_path)
+            if blob.exists():
+                blob.delete()
 
-        # 2. Delete from Firebase Storage
-        if self._storage_bucket is not None:
-            blob_path = f"responses/{survey_id}/images/{filename}"
+        try:
+            await asyncio.to_thread(_delete)
+        except Exception as e:
+            logger.warning("Could not delete blob '%s' from Cloud Storage: %s", blob_path, e)
 
-            def _delete_blob() -> None:
-                blob = self._storage_bucket.blob(blob_path)
-                if blob.exists():
-                    blob.delete()
-
-            try:
-                await asyncio.to_thread(_delete_blob)
-            except Exception as e:
-                logger.warning("Could not delete blob '%s' from Firebase Storage: %s", blob_path, e)
-
-    # ---------------- Schedule Configuration ----------------
+    # ---------------- Schedule Configuration (Firestore) ----------------
 
     async def get_schedule_config(self) -> Optional[SamplingRules]:
         """Retrieve the current sampling rules configuration from Firestore."""
@@ -402,7 +366,7 @@ class FirebaseStorageRepository(BaseStorageRepository):
         await doc_ref.set(config.model_dump(mode="json"))
         return config
 
-    # ---------------- Device Registrations ----------------
+    # ---------------- Device Registrations (Firestore) ----------------
 
     async def save_device(self, device: DeviceRegistration) -> DeviceRegistration:
         """Save a registered device token in Firestore."""

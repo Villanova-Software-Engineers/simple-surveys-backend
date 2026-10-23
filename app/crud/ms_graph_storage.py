@@ -6,8 +6,7 @@ Conforms strictly to BaseStorageRepository for drop-in polymorphic swapping.
 """
 
 import logging
-from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from app.crud.base import BaseStorageRepository
 from app.schemas.notification_config import DeviceRegistration, SamplingRules
 from app.schemas.survey_config import SurveyConfig
@@ -18,33 +17,25 @@ logger = logging.getLogger("simple_surveys.storage.ms_graph")
 class MSGraphStorageRepository(BaseStorageRepository):
     """
     Scaffold implementation of BaseStorageRepository targeting Microsoft Graph API.
-    
-    When active, this repository connects to Microsoft Graph using MSAL / Azure Identity
-    (client credentials or interactive authentication) and manages JSON and image files
-    within a designated SharePoint Document Library or OneDrive root directory.
+    Handles token acquisition, drive lookup, and asynchronous REST persistence.
     """
 
     def __init__(
         self,
-        tenant_id: Optional[str] = None,
         client_id: Optional[str] = None,
         client_secret: Optional[str] = None,
+        tenant_id: Optional[str] = None,
         drive_id: Optional[str] = None,
     ):
-        self.tenant_id = tenant_id
         self.client_id = client_id
         self.client_secret = client_secret
+        self.tenant_id = tenant_id
         self.drive_id = drive_id
-        self._is_authenticated = False
+        self._access_token: Optional[str] = None
 
-    async def _authenticate(self) -> None:
-        """Authenticate with Azure AD / Microsoft Graph."""
-        if not (self.tenant_id and self.client_id and self.client_secret):
-            raise NotImplementedError(
-                "Microsoft Graph credentials not configured. Please supply TENANT_ID, CLIENT_ID, and CLIENT_SECRET."
-            )
-        # Future: initialize GraphServiceClient(credentials)
-        self._is_authenticated = True
+    async def _authenticate(self) -> str:
+        """Authenticate with Azure AD / Microsoft Identity platform using client credentials flow."""
+        raise NotImplementedError("MS Graph authentication is scaffolded for future cloud integration.")
 
     async def save_survey(self, survey: SurveyConfig) -> SurveyConfig:
         await self._authenticate()
@@ -64,7 +55,7 @@ class MSGraphStorageRepository(BaseStorageRepository):
 
     async def save_response(
         self,
-        record: SurveyResponseRecord,
+        response: SurveyResponseRecord,
         timestamp_str: Optional[str] = None
     ) -> SurveyResponseRecord:
         await self._authenticate()
@@ -98,9 +89,9 @@ class MSGraphStorageRepository(BaseStorageRepository):
         await self._authenticate()
         raise NotImplementedError("MS Graph save_image is scaffolded for future cloud integration.")
 
-    async def get_image_path(self, survey_id: str, filename: str) -> Optional[Path]:
+    async def get_image_bytes(self, survey_id: str, filename: str) -> Optional[Tuple[bytes, str]]:
         await self._authenticate()
-        raise NotImplementedError("MS Graph get_image_path is scaffolded for future cloud integration.")
+        raise NotImplementedError("MS Graph get_image_bytes is scaffolded for future cloud integration.")
 
     async def get_schedule_config(self) -> Optional[SamplingRules]:
         await self._authenticate()

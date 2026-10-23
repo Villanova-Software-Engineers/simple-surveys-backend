@@ -5,7 +5,7 @@ import shutil
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import aiofiles
 import aiofiles.os
 
@@ -272,6 +272,16 @@ class FileStorageRepository(BaseStorageRepository):
         if file_path.exists():
             return file_path
         return None
+
+    async def get_image(self, survey_id: str, filename: str) -> Optional[Tuple[bytes, str]]:
+        """Retrieve raw image bytes and media_type directly from local file."""
+        file_path = await self.get_image_path(survey_id, filename)
+        if not file_path or not file_path.exists():
+            return None
+        async with aiofiles.open(file_path, "rb") as f:
+            content = await f.read()
+        media_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
+        return content, media_type
 
     # ---------------- Schedule Configuration ----------------
 

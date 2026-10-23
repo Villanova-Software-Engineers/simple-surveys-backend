@@ -5,8 +5,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.datastructures import UploadFile
 
@@ -108,15 +108,16 @@ async def get_response_image(
     survey_id: str,
     filename: str,
     storage_repo: StorageRepoDep,
-) -> FileResponse:
-    """Download an uploaded survey response photo."""
-    image_path = await storage_repo.get_image_path(survey_id, filename)
-    if not image_path:
+) -> Response:
+    """Download an uploaded survey response photo directly in-memory."""
+    image_data = await storage_repo.get_image(survey_id, filename)
+    if not image_data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Image '{filename}' not found for survey '{survey_id}'.",
         )
-    return FileResponse(image_path)
+    image_bytes, media_type = image_data
+    return Response(content=image_bytes, media_type=media_type)
 
 
 @router.post("", response_model=SurveyResponseSubmissionResult)
