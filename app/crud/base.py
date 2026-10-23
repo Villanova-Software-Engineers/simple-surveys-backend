@@ -1,8 +1,7 @@
 """Abstract base class for survey and response storage repositories."""
 
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from app.schemas.notification_config import DeviceRegistration, SamplingRules
 from app.schemas.survey_config import SurveyConfig
 from app.schemas.survey_response import SurveyResponseRecord
@@ -40,20 +39,30 @@ class BaseStorageRepository(ABC):
     @abstractmethod
     async def save_response(
         self,
-        record: SurveyResponseRecord,
+        response: SurveyResponseRecord,
         timestamp_str: Optional[str] = None
     ) -> SurveyResponseRecord:
-        """Save a response record as JSON."""
+        """Persist a survey response record."""
         pass
 
     @abstractmethod
-    async def get_response(self, survey_id: str, response_id: str) -> Optional[SurveyResponseRecord]:
-        """Retrieve a specific response record."""
+    async def get_response(
+        self,
+        survey_id: str,
+        response_id: str
+    ) -> Optional[SurveyResponseRecord]:
+        """Retrieve a single response record by survey_id and response_id."""
         pass
 
     @abstractmethod
-    async def list_responses(self, survey_id: Optional[str] = None) -> List[SurveyResponseRecord]:
-        """List response records, optionally filtered by survey_id."""
+    async def list_responses(
+        self,
+        survey_id: Optional[str] = None
+    ) -> List[SurveyResponseRecord]:
+        """
+        List response records.
+        If survey_id is provided, filters to that survey.
+        """
         pass
 
     @abstractmethod
@@ -64,7 +73,8 @@ class BaseStorageRepository(ABC):
         delete_image: bool = True
     ) -> bool:
         """
-        Delete a response record JSON and optionally its associated image.
+        Delete a response record by survey_id and response_id.
+        Optionally deletes the associated image file/blob.
         Returns True if deleted, False if not found.
         """
         pass
@@ -83,8 +93,8 @@ class BaseStorageRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_image_path(self, survey_id: str, filename: str) -> Optional[Path]:
-        """Get absolute path to an image file if it exists."""
+    async def get_image(self, survey_id: str, filename: str) -> Optional[Tuple[bytes, str]]:
+        """Retrieve image raw bytes and media_type (content-type) directly from storage."""
         pass
 
     # Schedule Configuration

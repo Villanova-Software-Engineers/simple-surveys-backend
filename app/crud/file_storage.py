@@ -2,9 +2,10 @@
 
 import re
 import shutil
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import aiofiles
 import aiofiles.os
 
@@ -16,6 +17,8 @@ from app.schemas.notification_config import (
 )
 from app.schemas.survey_config import SurveyConfig
 from app.schemas.survey_response import SurveyResponseRecord
+
+logger = logging.getLogger("simple_surveys.storage.file")
 
 
 def format_filename_timestamp(dt: Optional[datetime] = None) -> str:
@@ -34,7 +37,7 @@ class FileStorageRepository(BaseStorageRepository):
     """Persists surveys, responses, images, and config to designated server directories."""
 
     def __init__(self, data_dir: Optional[Path] = None):
-        self.data_dir = data_dir or settings.data_dir
+        self.data_dir = data_dir
         self.surveys_dir = settings.surveys_dir
         self.schedule_config_dir = settings.schedule_config_dir
         self.responses_dir = settings.responses_dir
@@ -269,6 +272,16 @@ class FileStorageRepository(BaseStorageRepository):
         if file_path.exists():
             return file_path
         return None
+
+    async def get_image(self, survey_id: str, filename: str) -> Optional[Tuple[bytes, str]]:
+        """Retrieve raw image bytes and media_type directly from local file."""
+        file_path = await self.get_image_path(survey_id, filename)
+        if not file_path or not file_path.exists():
+            return None
+        async with aiofiles.open(file_path, "rb") as f:
+            content = await f.read()
+        media_type = "image/png" if filename.lower().endswith(".png") else "image/jpeg"
+        return content, media_type
 
     # ---------------- Schedule Configuration ----------------
 
