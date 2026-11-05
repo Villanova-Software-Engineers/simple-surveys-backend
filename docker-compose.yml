@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: simple-surveys-backend:latest
+    container_name: simple-surveys-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      DEBUG: "false"
+      ALLOWED_ORIGINS: '["*"]'
+      STORAGE_BACKEND: file_storage
+      DATA_DIR: /app/data
+      TIME_TO_COMPLETE_MINUTES: 5
+      SCHEDULER_TIMEZONE: America/New_York
+    ports:
+      - "8000:8000"
+    volumes:
+      - simple_surveys_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  simple_surveys_data:
