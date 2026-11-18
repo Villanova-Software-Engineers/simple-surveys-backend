@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # Notification / Scheduler settings
     scheduler_timezone: str = "America/New_York"
 
+    # LLM Settings (Server-side local only)
+    llm_provider: str = "ollama"
+    llm_model_name: str = "llama3.2:3b"
+    local_llm_url: str = "http://localhost:11434"
+    llm_timeout_seconds: float = 2.5
+
     @property
     def surveys_dir(self) -> Path:
         """Directory holding survey definition JSON files."""

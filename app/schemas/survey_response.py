@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.common import ImageMetadata, LocationCoordinates, TemporalMarkers
+from app.schemas.llm import FollowUpSurveyPayload
 
 ResponseStatus = Literal["COMPLETED", "EXPIRED"]
 
@@ -27,6 +28,7 @@ class SurveyResponseCreate(BaseModel):
     location: Optional[LocationCoordinates] = Field(None, description="Geographic location details")
     answers: List[AnswerItem] = Field(default_factory=list, description="Answered survey questions")
     response_id: Optional[str] = Field(None, description="Optional client-generated response ID")
+    parent_response_id: Optional[str] = Field(None, description="Parent response ID if submitting a follow-up round")
 
 
 class SurveyResponseRecord(BaseModel):
@@ -41,6 +43,7 @@ class SurveyResponseRecord(BaseModel):
     location: Optional[LocationCoordinates] = Field(None, description="Participant location coordinates")
     image: ImageMetadata = Field(default_factory=ImageMetadata, description="Associated captured photo metadata")
     answers: List[AnswerItem] = Field(default_factory=list, description="Submitted answers (empty if EXPIRED)")
+    parent_response_id: Optional[str] = Field(None, description="Parent response ID if this is a follow-up record")
 
 
 class SurveyResponseSubmissionResult(BaseModel):
@@ -55,6 +58,10 @@ class SurveyResponseSubmissionResult(BaseModel):
     image_stored: bool = Field(False, description="Whether an uploaded image was persisted")
     image_filename: Optional[str] = Field(None, description="Persisted image filename if stored")
     received_at: datetime = Field(..., description="Timestamp when server received submission")
+    followup_survey: Optional[FollowUpSurveyPayload] = Field(
+        None,
+        description="Populated if the completed survey triggered an adaptive follow-up round."
+    )
 
 
 class ResponseDeleteResponse(BaseModel):

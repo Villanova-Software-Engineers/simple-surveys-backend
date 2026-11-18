@@ -1,0 +1,56 @@
+{
+  "survey_id": "daily_wellbeing_adaptive",
+  "title": "Daily Well-being & Environment Check-in",
+  "description": "Adaptive check-in that conditionally reveals questions on-device and generates a researcher follow-up post-submission.",
+  "notification_prompt": {
+    "title": "Daily Well-being Check-in",
+    "body": "Please take a moment to record your current well-being and surroundings."
+  },
+  "weight": 1.0,
+  "is_active": true,
+  "adaptive_followup": {
+    "enabled": true,
+    "max_questions_per_round": 1,
+    "max_followup_rounds": 1,
+    "researcher_prompt": "You are an empathetic behavioral health researcher. Based on the participant's stress score, free-text mood explanation, and current surroundings photo, formulate exactly ONE thoughtful follow-up question to probe what environmental or interpersonal factors contributed most to their current state."
+  },
+  "questions": [
+    {
+      "question_id": "q_stress_scale",
+      "prompt": "On a scale from 1 (completely calm) to 10 (extremely stressed), how stressed do you feel?",
+      "type": "rating_scale",
+      "is_required": true,
+      "validation_rules": {
+        "min_value": 1,
+        "max_value": 10,
+        "step": 1,
+        "min_label": "Completely Calm",
+        "max_label": "Extremely Stressed"
+      }
+    },
+    {
+      "question_id": "q_current_feeling_text",
+      "prompt": "In your own words, how do you feel at the moment?",
+      "type": "text",
+      "is_required": true
+    },
+    {
+      "question_id": "q_stress_coping_gated",
+      "prompt": "What strategy or support are you currently using to navigate this feeling?",
+      "type": "text",
+      "is_required": false,
+      "gating_rule": {
+        "source_question_id": "q_current_feeling_text",
+        "operator": "openjev_matches",
+        "natural_language_condition": "response expresses anxiety, high stress, emotional tension, or feeling overwhelmed",
+        "threshold": 0.55
+      }
+    },
+    {
+      "question_id": "q_open_sharing",
+      "prompt": "Is there anything else you want to share right now?",
+      "type": "text",
+      "is_required": false
+    }
+  ]
+}

@@ -11,6 +11,27 @@ QuestionType = Literal[
     "numeric",
 ]
 
+GatingOperator = Literal[
+    "openjev_matches",
+    "equals",
+    "greater_than",
+    "less_than",
+    "contains",
+]
+
+
+class QuestionGatingRule(BaseModel):
+    """
+    Client-evaluated gating condition attached to a survey question.
+    Stored and served by the backend; evaluated on-device by the mobile client.
+    """
+    model_config = ConfigDict(extra="ignore")
+
+    source_question_id: str = Field(..., description="ID of the parent question whose answer determines visibility")
+    operator: GatingOperator = Field("openjev_matches", description="Evaluation operator ('openjev_matches' for semantic model)")
+    natural_language_condition: Optional[str] = Field(None, description="Hypothesis predicate for OpenJev")
+    threshold: float = Field(0.55, description="Confidence threshold (0.0 to 1.0)")
+
 
 class RatingScaleValidation(BaseModel):
     """Validation rules for rating scale questions."""
@@ -66,6 +87,23 @@ class QuestionConfig(BaseModel):
     type: QuestionType = Field(..., description="Type of question")
     is_required: bool = Field(True, description="Whether an answer is mandatory")
     validation_rules: Optional[Dict[str, Any]] = Field(None, description="Type-specific validation rules")
+    gating_rule: Optional[QuestionGatingRule] = Field(
+        None,
+        description="Optional client-evaluated gating condition"
+    )
+
+
+class AdaptiveFollowUpConfig(BaseModel):
+    """Configuration attached to SurveyConfig to control LLM follow-ups."""
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = Field(False, description="Whether to trigger an LLM follow-up round")
+    max_questions_per_round: int = Field(1, ge=1, le=3, description="Maximum follow-up questions generated per round")
+    max_followup_rounds: int = Field(1, ge=1, le=5, description="Maximum number of conversational follow-up rounds allowed")
+    researcher_prompt: Optional[str] = Field(
+        None,
+        description="Custom system instructions framing the researcher's focus (e.g., 'Probe on coping mechanisms')."
+    )
 
 
 class SurveyNotificationPrompt(BaseModel):
@@ -87,6 +125,10 @@ class SurveyConfigBase(BaseModel):
     weight: float = Field(1.0, description="Sampling weight for randomized selection pools")
     is_active: bool = Field(True, description="Whether survey is active for sampling")
     questions: List[QuestionConfig] = Field(default_factory=list, description="Survey questions")
+    adaptive_followup: Optional[AdaptiveFollowUpConfig] = Field(
+        None,
+        description="Optional adaptive follow-up configuration"
+    )
 
 
 class SurveyConfigCreate(SurveyConfigBase):
@@ -104,6 +146,10 @@ class SurveyConfigUpdate(BaseModel):
     weight: Optional[float] = Field(None, description="Sampling weight")
     is_active: Optional[bool] = Field(None, description="Active status")
     questions: Optional[List[QuestionConfig]] = Field(None, description="Survey questions")
+    adaptive_followup: Optional[AdaptiveFollowUpConfig] = Field(
+        None,
+        description="Optional adaptive follow-up configuration"
+    )
 
 
 class SurveyConfig(SurveyConfigBase):

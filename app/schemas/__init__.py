@@ -2,7 +2,10 @@
 
 from app.schemas.common import ImageMetadata, LocationCoordinates, TemporalMarkers
 from app.schemas.survey_config import (
+    AdaptiveFollowUpConfig,
+    GatingOperator,
     QuestionConfig,
+    QuestionGatingRule,
     SurveyConfig,
     SurveyConfigCreate,
     SurveyConfigUpdate,
@@ -26,12 +29,15 @@ from app.schemas.notification_config import (
     SamplingRules,
     TimeWindow,
 )
+from app.schemas.llm import FollowUpSurveyPayload
 
 __all__ = [
     "ImageMetadata",
     "LocationCoordinates",
     "TemporalMarkers",
     "QuestionConfig",
+    "QuestionGatingRule",
+    "GatingOperator",
     "SurveyConfig",
     "SurveyConfigCreate",
     "SurveyConfigUpdate",
@@ -50,4 +56,6 @@ __all__ = [
     "DeviceDeleteResponse",
     "DeviceRegistration",
     "DeviceRegistrationResponse",
+    "AdaptiveFollowUpConfig",
+    "FollowUpSurveyPayload",
 ]
