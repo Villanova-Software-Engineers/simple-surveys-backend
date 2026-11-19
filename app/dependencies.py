@@ -11,8 +11,7 @@ lazy from app.crud.firebase_storage import FirebaseStorageRepository
 lazy from app.crud.ms_graph_storage import MSGraphStorageRepository
 from app.services.dispatchers.base import BaseNotificationDispatcher
 from app.services.dispatchers.push_dispatcher import PushNotificationDispatcher
-from app.services.llm.base import BaseLLMProvider
-from app.services.llm.providers.local_server_provider import LocalServerProvider
+from app.services.llm.providers.ollama_provider import OllamaProvider
 from app.services.llm.service import LLMService
 from app.services.scheduler_service import SchedulerService
 
@@ -52,23 +51,17 @@ def get_scheduler_service() -> SchedulerService:
 
 
 @lru_cache()
-def get_llm_provider() -> BaseLLMProvider:
-    """Provides singleton LLM model provider based on configured provider type."""
-    provider_name = settings.llm_provider.lower()
-    if provider_name in ["vllm", "local"]:
-        return LocalServerProvider(provider_type="vllm")
-    return LocalServerProvider(provider_type="ollama")
-
-
-@lru_cache()
 def get_llm_service() -> LLMService:
     """Provides singleton adaptive LLM orchestration service."""
-    provider = get_llm_provider()
+    provider = OllamaProvider(
+        base_url=settings.local_llm_url,
+        model_name=settings.llm_model_name,
+        timeout_seconds=settings.llm_timeout_seconds,
+    )
     return LLMService(provider=provider)
 
 
 StorageRepoDep = Annotated[BaseStorageRepository, Depends(get_storage_repository)]
 DispatcherDep = Annotated[BaseNotificationDispatcher, Depends(get_notification_dispatcher)]
 SchedulerServiceDep = Annotated[SchedulerService, Depends(get_scheduler_service)]
-LLMProviderDep = Annotated[BaseLLMProvider, Depends(get_llm_provider)]
 LLMServiceDep = Annotated[LLMService, Depends(get_llm_service)]

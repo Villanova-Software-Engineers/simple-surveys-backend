@@ -18,6 +18,7 @@ from app.schemas.survey_response import (
     SurveyResponseCreate,
     SurveyResponseRecord,
     SurveyResponseSubmissionResult,
+    FollowUpSurveyPayload
 )
 from app.schemas.notification_config import (
     DailyScheduleWindows,
@@ -29,7 +30,6 @@ from app.schemas.notification_config import (
     SamplingRules,
     TimeWindow,
 )
-from app.schemas.llm import FollowUpSurveyPayload
 
 __all__ = [
     "ImageMetadata",

@@ -2,9 +2,8 @@
 
 import logging
 from typing import Optional
-from app.schemas.llm import FollowUpSurveyPayload
 from app.schemas.survey_config import SurveyConfig
-from app.schemas.survey_response import SurveyResponseRecord
+from app.schemas.survey_response import SurveyResponseRecord, FollowUpSurveyPayload
 from app.services.llm.base import BaseLLMProvider
 
 logger = logging.getLogger("simple_surveys.llm.service")
@@ -25,7 +24,6 @@ class LLMService:
         response_record: SurveyResponseRecord,
         round_number: int,
         photo_bytes: Optional[bytes] = None,
-        photo_media_type: Optional[str] = None,
     ) -> Optional[FollowUpSurveyPayload]:
         """
         Orchestrates generative follow-up synthesis for an adaptive survey submission.
@@ -44,7 +42,6 @@ class LLMService:
                 survey_title=survey.title,
                 response_record=response_record,
                 photo_bytes=photo_bytes,
-                photo_media_type=photo_media_type,
                 max_questions=max_questions,
                 system_instruction=researcher_prompt,
             )

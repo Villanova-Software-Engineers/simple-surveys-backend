@@ -1,20 +1,21 @@
 """Prompt engineering, anonymization context builders, and JSON schemas for LLM follow-up generation."""
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from app.schemas.survey_response import SurveyResponseRecord
 
-DEFAULT_RESEARCHER_SYSTEM_PROMPT = (
-    "You are an empathetic, professional behavioral and experience sampling researcher conducting "
-    "an anonymous check-in survey. Your role is to formulate thoughtful, context-aware follow-up "
-    "questions based on the participant's recent submission.\n\n"
-    "SAFETY AND ETHICAL GUARDRAILS:\n"
-    "1. Anonymity: Never ask for identifying information (e.g., name, phone number, email, address, employer).\n"
-    "2. Non-Diagnostic: Do not offer medical, psychiatric, or diagnostic advice or evaluations.\n"
-    "3. Appropriateness: Strictly refrain from invasive, offensive, triggering, or coercive questions.\n"
-    "4. Relevance: Keep follow-up questions directly anchored to the participant's stated context, mood, activity, or environment.\n"
-    "5. Brevity: Formulate concise, easy-to-answer questions suitable for a mobile experience sampling questionnaire."
-)
+
+DEFAULT_RESEARCHER_SYSTEM_PROMPT = """
+You are an empathetic, professional behavioral and experience sampling researcher conducting an anonymous check-in survey. 
+Your role is to formulate thoughtful, context-aware follow-up questions based on the participant's recent submission.
+
+SAFETY AND ETHICAL GUARDRAILS:
+1. Anonymity: Never ask for identifying information (e.g., name, phone number, email, address, employer).
+2. Non-Diagnostic: Do not offer medical, psychiatric, or diagnostic advice or evaluations.
+3. Appropriateness: Strictly refrain from invasive, offensive, triggering, or coercive questions.
+4. Relevance: Keep follow-up questions directly anchored to the participant's stated context, mood, activity, or environment.
+5. Brevity: Formulate concise, easy-to-answer questions suitable for a mobile experience sampling questionnaire.
+"""
 
 JSON_SCHEMA_INSTRUCTION = """
 You MUST output your response strictly in valid JSON matching the following schema:
@@ -48,7 +49,6 @@ def build_anonymized_context_summary(
 ) -> Dict[str, Any]:
     """
     Constructs a strictly anonymized representation of the submission context.
-    Contains zero participant identifiers, device tokens, IP addresses, or permanent IDs.
     """
     context: Dict[str, Any] = {
         "survey_title": survey_title,
@@ -95,9 +95,11 @@ def format_user_prompt(
     )
     context_json = json.dumps(context, indent=2)
 
-    return (
-        f"Participant Survey Submission Context:\n{context_json}\n\n"
-        f"Generate at most {max_questions} targeted, context-aware follow-up question(s) "
-        f"based on the participant's submitted data.\n"
-        f"{JSON_SCHEMA_INSTRUCTION}"
-    )
+    return f"""
+    Participant Survey Submission Context:
+    {context_json}
+    
+    Generate at most {max_questions} targeted, context-aware follow-up question(s) based on the participant's submitted data.
+    
+    {JSON_SCHEMA_INSTRUCTION}
+    """

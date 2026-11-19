@@ -15,7 +15,6 @@ class BaseLLMProvider(ABC):
         survey_title: str,
         response_record: SurveyResponseRecord,
         photo_bytes: Optional[bytes] = None,
-        photo_media_type: Optional[str] = None,
         max_questions: int = 1,
         system_instruction: Optional[str] = None,
     ) -> Tuple[Optional[str], List[QuestionConfig]]:

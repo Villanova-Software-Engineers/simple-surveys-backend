@@ -16,13 +16,13 @@ from app.crud.base import BaseStorageRepository
 from app.crud.file_storage import format_filename_timestamp
 from app.dependencies import LLMServiceDep, SchedulerServiceDep, StorageRepoDep
 from app.schemas.common import ImageMetadata
-from app.schemas.llm import FollowUpSurveyPayload
 from app.schemas.survey_config import SurveyConfig
 from app.schemas.survey_response import (
     ResponseDeleteResponse,
     SurveyResponseCreate,
     SurveyResponseRecord,
     SurveyResponseSubmissionResult,
+    FollowUpSurveyPayload
 )
 from app.services.llm.service import LLMService
 
@@ -125,6 +125,119 @@ async def get_response_image(
     return Response(content=image_bytes, media_type=media_type)
 
 
+@router.post("", response_model=SurveyResponseSubmissionResult)
+async def submit_response(
+    request: Request,
+    storage_repo: StorageRepoDep,
+    scheduler_service: SchedulerServiceDep,
+    llm_service: LLMServiceDep,
+) -> JSONResponse:
+    """
+    Ingests anonymous survey response data with optional camera photo.
+    Evaluates submission against the configured time_to_complete_minutes window.
+    Supports adaptive ESM follow-up question synthesis via local server LLM.
+    Supports both multipart/form-data (with JSON string + file) and application/json.
+    """
+    submission, uploaded_image = await _parse_submission_request(request)
+
+    survey = await storage_repo.get_survey(submission.survey_id)
+    if not survey:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Survey '{submission.survey_id}' does not exist.",
+        )
+
+    response_id, current_round = _resolve_response_identity(submission)
+    received_at = datetime.now(timezone.utc)
+
+    schedule_config = await storage_repo.get_schedule_config()
+    time_limit_minutes = (
+        schedule_config.time_to_complete_minutes
+        if schedule_config
+        else settings.time_to_complete_minutes
+    )
+
+    res_status, status_message, is_expired, temporal_markers = (
+        scheduler_service.evaluate_response_expiration(
+            submission=submission,
+            time_to_complete_limit_minutes=time_limit_minutes,
+            received_at=received_at,
+        )
+    )
+
+    anchor_dt = submission.completed_at or received_at
+    timestamp_str = format_filename_timestamp(anchor_dt)
+
+    if is_expired:
+        image_metadata = ImageMetadata(has_image=False)
+        image_stored = False
+        stored_img_filename = None
+        image_bytes = None
+    else:
+        image_metadata, image_stored, stored_img_filename, image_bytes = (
+            await _process_submission_media(
+                storage_repo=storage_repo,
+                survey_id=submission.survey_id,
+                response_id=response_id,
+                timestamp_str=timestamp_str,
+                uploaded_image=uploaded_image,
+                parent_response_id=submission.parent_response_id,
+            )
+        )
+
+    record = SurveyResponseRecord(
+        response_id=response_id,
+        survey_id=submission.survey_id,
+        status=res_status,
+        status_message=status_message,
+        temporal_markers=temporal_markers,
+        location=submission.location,
+        image=image_metadata,
+        answers=[] if is_expired else submission.answers,
+        parent_response_id=submission.parent_response_id,
+    )
+    await storage_repo.save_response(record, timestamp_str=timestamp_str)
+
+    if is_expired:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content=SurveyResponseSubmissionResult(
+                response_id=response_id,
+                survey_id=submission.survey_id,
+                status="EXPIRED",
+                status_message=status_message,
+                message=status_message,
+                image_stored=False,
+                image_filename=None,
+                received_at=received_at,
+                followup_survey=None,
+            ).model_dump(mode="json"),
+        )
+
+    followup_survey = await _evaluate_adaptive_followup(
+        llm_service=llm_service,
+        survey=survey,
+        record=record,
+        current_round=current_round,
+        image_bytes=image_bytes,
+    )
+
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED,
+        content=SurveyResponseSubmissionResult(
+            response_id=response_id,
+            survey_id=submission.survey_id,
+            status="COMPLETED",
+            status_message=status_message,
+            message=status_message,
+            image_stored=image_stored,
+            image_filename=stored_img_filename,
+            received_at=received_at,
+            followup_survey=followup_survey,
+        ).model_dump(mode="json"),
+    )
+
+
 async def _parse_submission_request(
     request: Request,
 ) -> Tuple[SurveyResponseCreate, Optional[UploadFile]]:
@@ -199,21 +312,19 @@ async def _process_submission_media(
     timestamp_str: str,
     uploaded_image: Optional[UploadFile],
     parent_response_id: Optional[str],
-) -> Tuple[ImageMetadata, bool, Optional[str], Optional[bytes], Optional[str]]:
+) -> Tuple[ImageMetadata, bool, Optional[str], Optional[bytes]]:
     """
     Persists uploaded photo or retrieves parent photo for multimodal context.
-    Returns: (image_metadata, image_stored, stored_img_filename, image_bytes, photo_media_type)
+    Returns: (image_metadata, image_stored, stored_img_filename, image_bytes)
     """
     image_metadata = ImageMetadata(has_image=False)
     image_stored = False
     stored_img_filename: Optional[str] = None
     image_bytes: Optional[bytes] = None
-    photo_media_type: Optional[str] = None
 
     if uploaded_image:
         image_bytes = await uploaded_image.read()
         if image_bytes:
-            photo_media_type = uploaded_image.content_type or "image/jpeg"
             ext = Path(uploaded_image.filename).suffix.lstrip(".") or "jpg"
             stored_img_filename = await storage_repo.save_image(
                 survey_id=survey_id,
@@ -240,11 +351,11 @@ async def _process_submission_media(
             if parent_record and parent_record.image and parent_record.image.image_filename:
                 parent_img = await storage_repo.get_image(survey_id, parent_record.image.image_filename)
                 if parent_img:
-                    image_bytes, photo_media_type = parent_img
+                    image_bytes, _ = parent_img
         except Exception as e:
             pass
 
-    return image_metadata, image_stored, stored_img_filename, image_bytes, photo_media_type
+    return image_metadata, image_stored, stored_img_filename, image_bytes
 
 
 async def _evaluate_adaptive_followup(
@@ -253,7 +364,6 @@ async def _evaluate_adaptive_followup(
     record: SurveyResponseRecord,
     current_round: int,
     image_bytes: Optional[bytes],
-    photo_media_type: Optional[str],
 ) -> Optional[FollowUpSurveyPayload]:
     """Evaluates and generates adaptive follow-up questions if enabled and within round limits."""
     if not (
@@ -268,113 +378,4 @@ async def _evaluate_adaptive_followup(
         response_record=record,
         round_number=current_round + 1,
         photo_bytes=image_bytes,
-        photo_media_type=photo_media_type,
-    )
-
-
-@router.post("", response_model=SurveyResponseSubmissionResult)
-async def submit_response(
-    request: Request,
-    storage_repo: StorageRepoDep,
-    scheduler_service: SchedulerServiceDep,
-    llm_service: LLMServiceDep,
-) -> JSONResponse:
-    """
-    Ingests anonymous survey response data with optional camera photo.
-    Evaluates submission against the configured time_to_complete_minutes window.
-    Supports adaptive ESM follow-up question synthesis via local server LLM.
-    Supports both multipart/form-data (with JSON string + file) and application/json.
-    """
-    submission, uploaded_image = await _parse_submission_request(request)
-
-    survey = await storage_repo.get_survey(submission.survey_id)
-    if not survey:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Survey '{submission.survey_id}' does not exist.",
-        )
-
-    response_id, current_round = _resolve_response_identity(submission)
-    received_at = datetime.now(timezone.utc)
-
-    schedule_config = await storage_repo.get_schedule_config()
-    time_limit_minutes = (
-        schedule_config.time_to_complete_minutes
-        if schedule_config
-        else settings.time_to_complete_minutes
-    )
-
-    res_status, status_message, is_expired, temporal_markers = (
-        scheduler_service.evaluate_response_expiration(
-            submission=submission,
-            time_to_complete_limit_minutes=time_limit_minutes,
-            received_at=received_at,
-        )
-    )
-
-    anchor_dt = submission.completed_at or received_at
-    timestamp_str = format_filename_timestamp(anchor_dt)
-
-    image_metadata, image_stored, stored_img_filename, image_bytes, photo_media_type = (
-        await _process_submission_media(
-            storage_repo=storage_repo,
-            survey_id=submission.survey_id,
-            response_id=response_id,
-            timestamp_str=timestamp_str,
-            uploaded_image=uploaded_image,
-            parent_response_id=submission.parent_response_id,
-        )
-    )
-
-    record = SurveyResponseRecord(
-        response_id=response_id,
-        survey_id=submission.survey_id,
-        status=res_status,
-        status_message=status_message,
-        temporal_markers=temporal_markers,
-        location=submission.location,
-        image=image_metadata,
-        answers=[] if is_expired else submission.answers,
-        parent_response_id=submission.parent_response_id,
-    )
-    await storage_repo.save_response(record, timestamp_str=timestamp_str)
-
-    if is_expired:
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=SurveyResponseSubmissionResult(
-                response_id=response_id,
-                survey_id=submission.survey_id,
-                status="EXPIRED",
-                status_message=status_message,
-                message=status_message,
-                image_stored=image_stored,
-                image_filename=stored_img_filename,
-                received_at=received_at,
-                followup_survey=None,
-            ).model_dump(mode="json"),
-        )
-
-    followup_survey = await _evaluate_adaptive_followup(
-        llm_service=llm_service,
-        survey=survey,
-        record=record,
-        current_round=current_round,
-        image_bytes=image_bytes,
-        photo_media_type=photo_media_type,
-    )
-
-    return JSONResponse(
-        status_code=status.HTTP_201_CREATED,
-        content=SurveyResponseSubmissionResult(
-            response_id=response_id,
-            survey_id=submission.survey_id,
-            status="COMPLETED",
-            status_message=status_message,
-            message=status_message,
-            image_stored=image_stored,
-            image_filename=stored_img_filename,
-            received_at=received_at,
-            followup_survey=followup_survey,
-        ).model_dump(mode="json"),
     )

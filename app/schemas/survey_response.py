@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.common import ImageMetadata, LocationCoordinates, TemporalMarkers
-from app.schemas.llm import FollowUpSurveyPayload
+from app.schemas.survey_config import QuestionConfig
 
 ResponseStatus = Literal["COMPLETED", "EXPIRED"]
 
@@ -44,6 +44,24 @@ class SurveyResponseRecord(BaseModel):
     image: ImageMetadata = Field(default_factory=ImageMetadata, description="Associated captured photo metadata")
     answers: List[AnswerItem] = Field(default_factory=list, description="Submitted answers (empty if EXPIRED)")
     parent_response_id: Optional[str] = Field(None, description="Parent response ID if this is a follow-up record")
+
+
+class FollowUpSurveyPayload(BaseModel):
+    """Dynamic follow-up survey returned in response to initial survey completion."""
+    model_config = ConfigDict(extra="ignore")
+
+    parent_response_id: str = Field(..., description="Response ID of the parent survey submission")
+    survey_id: str = Field(..., description="Survey identifier")
+    round_number: int = Field(1, description="Current follow-up round index (1 to max_followup_rounds)")
+    title: str = Field("Follow-up Questions", description="Title for follow-up survey")
+    researcher_message: Optional[str] = Field(
+        None,
+        description="A brief personalized message from the researcher acknowledging the participant's situation"
+    )
+    questions: List[QuestionConfig] = Field(
+        ...,
+        description="Questions adhering strictly to app.schemas.survey_config.QuestionConfig"
+    )
 
 
 class SurveyResponseSubmissionResult(BaseModel):
