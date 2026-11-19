@@ -60,8 +60,7 @@ Simple-Surveys-Backend/
 │   └── devices/                 # Registered push notification device tokens
 ├── docs/
 │   ├── BACKEND_IMPLEMENTATION_PLAN.md
-│   ├── LLM_FEATURE_IMPLEMENTATION_PLAN.md
-│   └── FRONTEND_GATING_IMPLEMENTATION_PLAN.md
+│   └── LLM_FEATURE_IMPLEMENTATION_PLAN.md
 ├── .env.example
 ├── requirements.txt
 └── README.md
