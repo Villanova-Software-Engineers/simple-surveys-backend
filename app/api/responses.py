@@ -22,7 +22,7 @@ from app.schemas.survey_response import (
     SurveyResponseCreate,
     SurveyResponseRecord,
     SurveyResponseSubmissionResult,
-    FollowUpSurveyPayload
+    FollowUpSurveyPayload,
 )
 from app.services.llm.service import LLMService
 
@@ -188,13 +188,14 @@ async def submit_response(
     record = SurveyResponseRecord(
         response_id=response_id,
         survey_id=submission.survey_id,
+        parent_response_id=submission.parent_response_id,
         status=res_status,
         status_message=status_message,
         temporal_markers=temporal_markers,
         location=submission.location,
         image=image_metadata,
+        researcher_message=submission.researcher_message,
         answers=[] if is_expired else submission.answers,
-        parent_response_id=submission.parent_response_id,
     )
     await storage_repo.save_response(record, timestamp_str=timestamp_str)
 
@@ -352,7 +353,7 @@ async def _process_submission_media(
                 parent_img = await storage_repo.get_image(survey_id, parent_record.image.image_filename)
                 if parent_img:
                     image_bytes, _ = parent_img
-        except Exception as e:
+        except Exception:
             pass
 
     return image_metadata, image_stored, stored_img_filename, image_bytes

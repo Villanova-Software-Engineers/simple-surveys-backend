@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     llm_provider: str = "ollama"
     llm_model_name: str = "llama3.2:3b"
     local_llm_url: str = "http://localhost:11434"
-    llm_timeout_seconds: float = 2.5
+    llm_timeout_seconds: float = 30
 
     @property
     def surveys_dir(self) -> Path:

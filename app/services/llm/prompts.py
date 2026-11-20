@@ -14,13 +14,14 @@ SAFETY AND ETHICAL GUARDRAILS:
 2. Non-Diagnostic: Do not offer medical, psychiatric, or diagnostic advice or evaluations.
 3. Appropriateness: Strictly refrain from invasive, offensive, triggering, or coercive questions.
 4. Relevance: Keep follow-up questions directly anchored to the participant's stated context, mood, activity, or environment.
-5. Brevity: Formulate concise, easy-to-answer questions suitable for a mobile experience sampling questionnaire.
+5. Perspective: Address the participant directly using 'you' and 'your'. Never use inclusive first-person plurals like 'we', 'us', or 'our'.
+6. Brevity: Formulate concise, easy-to-answer questions suitable for a mobile experience sampling questionnaire.
 """
 
 JSON_SCHEMA_INSTRUCTION = """
 You MUST output your response strictly in valid JSON matching the following schema:
 {
-  "researcher_message": "A brief, empathetic 1-sentence note acknowledging the participant's situation or state (optional, can be null)",
+  "researcher_message": "A brief, empathetic 1-sentence note acknowledging the participant's situation or state",
   "questions": [
     {
       "question_id": "string (unique identifier, e.g. 'followup_coping_text')",
@@ -50,13 +51,22 @@ def build_anonymized_context_summary(
     """
     Constructs a strictly anonymized representation of the submission context.
     """
+    answers = []
+    for a in response_record.answers:
+        item: Dict[str, Any] = {
+            "question_id": a.question_id,
+            "question_prompt": a.question_prompt,
+            "value": a.value
+        }
+        answers.append(item)
+
     context: Dict[str, Any] = {
         "survey_title": survey_title,
-        "answers": [
-            {"question_id": a.question_id, "value": a.value}
-            for a in response_record.answers
-        ],
+        "answers": answers,
     }
+
+    if response_record.researcher_message:
+        context["researcher_message"] = response_record.researcher_message
 
     if response_record.temporal_markers:
         tm = response_record.temporal_markers

@@ -7,7 +7,6 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
-from app.config import settings
 from app.schemas.survey_config import QuestionConfig
 from app.schemas.survey_response import SurveyResponseRecord
 from app.services.llm.base import BaseLLMProvider
@@ -93,6 +92,8 @@ class OllamaProvider(BaseLLMProvider):
             "stream": False,
             "options": {
                 "temperature": 0.2,
+                "repeat_penalty": 1.15,
+                "repeat_last_n": 64
             },
         }
 
@@ -100,6 +101,20 @@ class OllamaProvider(BaseLLMProvider):
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(endpoint, json=payload)
+
+                # Graceful fallback
+                if response.status_code == 400 and photo_bytes and "does not support multimodal" in response.text:
+                    logger.info(
+                        "Model '%s' does not support multimodal requests. Retrying text-only follow-up generation.",
+                        self.model_name,
+                    )
+                    user_message.pop("images", None)
+                    payload["messages"] = [
+                        {"role": "system", "content": system_prompt},
+                        user_message,
+                    ]
+                    response = await client.post(endpoint, json=payload)
+
                 if response.status_code != 200:
                     logger.warning(
                         "Ollama responded with HTTP %d: %s",

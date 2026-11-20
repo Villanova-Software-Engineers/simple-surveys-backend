@@ -36,7 +36,7 @@
       "gating_rule": {
         "source_question_id": "q_mood_feeling",
         "operator": "openjev_matches",
-        "natural_language_condition": "response expresses stress, anxiety, overwhelm, pressure, or emotional fatigue",
+        "natural_language_condition": "The participant feels stressed or anxious.",
         "threshold": 0.55
       }
     },

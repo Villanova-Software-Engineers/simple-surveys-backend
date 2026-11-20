@@ -10,8 +10,8 @@
   "is_active": true,
   "adaptive_followup": {
     "enabled": true,
-    "max_questions_per_round": 1,
-    "max_followup_rounds": 1,
+    "max_questions_per_round": 3,
+    "max_followup_rounds": 2,
     "researcher_prompt": "You are an empathetic behavioral health researcher. Based on the participant's stress score, free-text mood explanation, and current surroundings photo, formulate exactly ONE thoughtful follow-up question to probe what environmental or interpersonal factors contributed most to their current state."
   },
   "questions": [
@@ -42,7 +42,7 @@
       "gating_rule": {
         "source_question_id": "q_current_feeling_text",
         "operator": "openjev_matches",
-        "natural_language_condition": "response expresses anxiety, high stress, emotional tension, or feeling overwhelmed",
+        "natural_language_condition": "The participant feels stressed or anxious",
         "threshold": 0.55
       }
     },
