@@ -21,7 +21,7 @@ SAFETY AND ETHICAL GUARDRAILS:
 JSON_SCHEMA_INSTRUCTION = """
 You MUST output your response strictly in valid JSON matching the following schema:
 {
-  "researcher_message": "A brief, empathetic 1-sentence note acknowledging the participant's situation or state",
+  "researcher_message": "A brief, empathetic 1-sentence note acknowledging the participant's situation or state. Do not pose a question in this message",
   "questions": [
     {
       "question_id": "string (unique identifier, e.g. 'followup_coping_text')",

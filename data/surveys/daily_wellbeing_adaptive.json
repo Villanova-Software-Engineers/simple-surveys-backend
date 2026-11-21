@@ -11,7 +11,7 @@
   "adaptive_followup": {
     "enabled": true,
     "max_questions_per_round": 3,
-    "max_followup_rounds": 2,
+    "max_followup_rounds": 1,
     "researcher_prompt": "You are an empathetic behavioral health researcher. Based on the participant's stress score, free-text mood explanation, and current surroundings photo, formulate exactly ONE thoughtful follow-up question to probe what environmental or interpersonal factors contributed most to their current state."
   },
   "questions": [
