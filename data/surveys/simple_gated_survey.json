@@ -1,0 +1,73 @@
+{
+  "survey_id": "simple_gated_survey",
+  "title": "Simple Gated Experience Check-in",
+  "description": "A lightweight check-in survey demonstrating on-device semantic question gating based on participant responses.",
+  "notification_prompt": {
+    "title": "Quick Check-in",
+    "body": "Take a moment to share how you are doing."
+  },
+  "weight": 1.0,
+  "is_active": true,
+  "questions": [
+    {
+      "question_id": "q_mood_feeling",
+      "prompt": "In your own words, describe how you are feeling right now:",
+      "type": "text",
+      "is_required": true,
+      "validation_rules": {
+        "placeholder": "e.g., feeling relaxed, overwhelmed with deadlines, tired...",
+        "max_length": 300
+      }
+    },
+    {
+      "question_id": "q_stress_factors",
+      "prompt": "What is the primary factor contributing to this stress or tension?",
+      "type": "single_choice",
+      "is_required": false,
+      "validation_rules": {
+        "options": [
+          "Work or Academic Deadlines",
+          "Interpersonal Conflict",
+          "Physical Health or Fatigue",
+          "Financial Concerns",
+          "Other"
+        ]
+      },
+      "gating_rule": {
+        "source_question_id": "q_mood_feeling",
+        "operator": "openjev_matches",
+        "natural_language_condition": "The participant feels stressed or anxious.",
+        "threshold": 0.55
+      }
+    },
+    {
+      "question_id": "q_coping_support",
+      "prompt": "What coping strategy or support would be most helpful to you right now?",
+      "type": "text",
+      "is_required": false,
+      "validation_rules": {
+        "placeholder": "e.g., taking a walk, stepping away from the screen, talking to a friend...",
+        "max_length": 250
+      },
+      "gating_rule": {
+        "source_question_id": "q_mood_feeling",
+        "operator": "openjev_matches",
+        "natural_language_condition": "response expresses stress, anxiety, overwhelm, pressure, or emotional fatigue",
+        "threshold": 0.55
+      }
+    },
+    {
+      "question_id": "q_energy_rating",
+      "prompt": "On a scale from 1 (completely drained) to 5 (fully energized), rate your current energy level:",
+      "type": "rating_scale",
+      "is_required": true,
+      "validation_rules": {
+        "min_value": 1,
+        "max_value": 5,
+        "step": 1,
+        "min_label": "Drained",
+        "max_label": "Energized"
+      }
+    }
+  ]
+}

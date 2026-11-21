@@ -4,15 +4,20 @@ from datetime import datetime
 from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.common import ImageMetadata, LocationCoordinates, TemporalMarkers
+from app.schemas.survey_config import QuestionConfig
 
 ResponseStatus = Literal["COMPLETED", "EXPIRED"]
 
 
 class AnswerItem(BaseModel):
-    """A single answered question item."""
+    """A single answered question item, paired with its prompt."""
     model_config = ConfigDict(extra="ignore")
 
     question_id: str = Field(..., description="Target question identifier")
+    question_prompt: str = Field(
+        ...,
+        description="The prompt text of the question asked. Always populated by the client for both initial and follow-up questions."
+    )
     value: Any = Field(..., description="Answer value (number, string, list, etc.)")
 
 
@@ -21,26 +26,51 @@ class SurveyResponseCreate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     survey_id: str = Field(..., description="Identifier of the survey answered")
-    notification_sent_at: datetime = Field(..., description="Timestamp when notification prompt was dispatched")
-    started_at: Optional[datetime] = Field(None, description="Timestamp when user began answering")
-    completed_at: Optional[datetime] = Field(None, description="Timestamp when survey was completed")
+    notification_sent_at: datetime = Field(..., description="Timestamp when survey or follow-up round was presented to participant")
+    started_at: Optional[datetime] = Field(None, description="Timestamp when user began answering this round")
+    completed_at: Optional[datetime] = Field(None, description="Timestamp when user tapped submit on device")
     location: Optional[LocationCoordinates] = Field(None, description="Geographic location details")
-    answers: List[AnswerItem] = Field(default_factory=list, description="Answered survey questions")
+    answers: List[AnswerItem] = Field(default_factory=list, description="Answered survey questions with prompts")
     response_id: Optional[str] = Field(None, description="Optional client-generated response ID")
+    parent_response_id: Optional[str] = Field(None, description="Parent response ID if submitting a follow-up round")
+    researcher_message: Optional[str] = Field(
+        None,
+        description="The researcher follow-up message shown to participant before these questions."
+    )
 
 
 class SurveyResponseRecord(BaseModel):
-    """Full persisted response record saved to data/responses/{survey_id}/data/."""
+    """Full persisted response record saved to storage."""
     model_config = ConfigDict(extra="ignore")
 
-    response_id: str = Field(..., description="Unique response identifier (resp_{id})")
+    response_id: str = Field(..., description="Unique response identifier (resp_{id} or resp_{id}_follow-up_{k})")
     survey_id: str = Field(..., description="Identifier of the survey answered")
-    status: ResponseStatus = Field(..., description="Completion or expiration status")
+    parent_response_id: Optional[str] = Field(None, description="Parent response ID if this is a follow-up record")
+    status: ResponseStatus = Field(..., description="Completion or expiration status (COMPLETED or EXPIRED)")
     status_message: str = Field(..., description="Descriptive status note")
     temporal_markers: TemporalMarkers = Field(..., description="Audit markers for dispatch, latency, and duration")
     location: Optional[LocationCoordinates] = Field(None, description="Participant location coordinates")
     image: ImageMetadata = Field(default_factory=ImageMetadata, description="Associated captured photo metadata")
-    answers: List[AnswerItem] = Field(default_factory=list, description="Submitted answers (empty if EXPIRED)")
+    researcher_message: Optional[str] = Field(None, description="Researcher follow-up message if applicable")
+    answers: List[AnswerItem] = Field(default_factory=list, description="Submitted answers with prompt text included")
+
+
+class FollowUpSurveyPayload(BaseModel):
+    """Dynamic follow-up survey returned in response to initial survey completion."""
+    model_config = ConfigDict(extra="ignore")
+
+    parent_response_id: str = Field(..., description="Response ID of the parent survey submission")
+    survey_id: str = Field(..., description="Survey identifier")
+    round_number: int = Field(1, description="Current follow-up round index (1 to max_followup_rounds)")
+    title: str = Field("Follow-up Questions", description="Title for follow-up survey")
+    researcher_message: str = Field(
+        "Thank you for sharing your thoughts with us.",
+        description="A brief personalized message from the researcher acknowledging the participant's situation"
+    )
+    questions: List[QuestionConfig] = Field(
+        ...,
+        description="Questions adhering strictly to app.schemas.survey_config.QuestionConfig"
+    )
 
 
 class SurveyResponseSubmissionResult(BaseModel):
@@ -55,6 +85,10 @@ class SurveyResponseSubmissionResult(BaseModel):
     image_stored: bool = Field(False, description="Whether an uploaded image was persisted")
     image_filename: Optional[str] = Field(None, description="Persisted image filename if stored")
     received_at: datetime = Field(..., description="Timestamp when server received submission")
+    followup_survey: Optional[FollowUpSurveyPayload] = Field(
+        None,
+        description="Populated if the completed survey triggered an adaptive follow-up round."
+    )
 
 
 class ResponseDeleteResponse(BaseModel):
